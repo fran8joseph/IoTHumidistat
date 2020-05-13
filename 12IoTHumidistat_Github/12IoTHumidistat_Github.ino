@@ -111,9 +111,11 @@ void loop() {
   server.handleClient();
 
   if(loopCounter == 6500 || onStartup==true){
+    getRoomTemperature();
+    getRoomHumidity();
     handleWebData();
-   // Serial.print("from loop :");
-   // Serial.println(onStartup);
+    // Serial.print("from loop :");
+    // Serial.println(onStartup);
     loopCounter=0;
     onStartup=false;
   }
