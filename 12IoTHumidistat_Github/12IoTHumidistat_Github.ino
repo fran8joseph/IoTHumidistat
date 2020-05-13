@@ -23,9 +23,6 @@ ESP8266WebServer server(80);
 dht DHT;
 Servo servo; 
 
-int humidity;
-float temperature;
-
 float ctemp;
 float cfeels;
 float cminTemp;
@@ -78,7 +75,7 @@ void setup()
 
   while (WiFi.status() != WL_CONNECTED)
   {
-    delay(2000);
+    delay(1000);
     Serial.print(".");
   }
   Serial.println();
@@ -86,9 +83,11 @@ void setup()
   Serial.print("Connected, IP address: ");
   Serial.println(WiFi.localIP());
 
-  delay(3000);
+  delay(2000);
 
-  if (MDNS.begin("esp8266")) {              // Start the mDNS responder for esp8266.local
+  if (MDNS.begin("esp8266")) {  
+    
+    MDNS.addService("http","tcp",80);
     Serial.println("mDNS responder started");
   } else {
     Serial.println("Error setting up MDNS responder!");
@@ -99,7 +98,7 @@ void setup()
   server.on("/list", HTTP_GET, handleWebData);
   server.onNotFound(handleNotFound);
 
-  server.begin(); // Actually start the server
+  server.begin(); 
   Serial.println("HTTP server started");
 
   delay(3000);
@@ -111,9 +110,9 @@ void loop() {
   server.handleClient();
 
   if(loopCounter == 6500 || onStartup==true){
+    
     handleWebData();
-   // Serial.print("from loop :");
-   // Serial.println(onStartup);
+
     loopCounter=0;
     onStartup=false;
   }
@@ -142,8 +141,8 @@ void controlServoAngle(int optVal){
   }
 }
 
-float getRoomTemperature() {
-  float temperature = DHT.temperature;
+int getRoomTemperature() {
+  int temperature = DHT.temperature;
   return temperature;
 }
 
@@ -182,12 +181,11 @@ void setOptimumHumidity(float _outT){
   Serial.print("Temp out:");
   Serial.println(_outT);
   
-   Serial.println("Optimum Humidity:");
-   Serial.print(optRoomHumidity);
+   Serial.print("Optimum Humidity:");
+   Serial.println(optRoomHumidity);
 
    controlServoAngle(optRoomHumidity);
-   
-  //return optRoomHumidity;
+
 }
 
 String getResponseFromAPI(String endPoint) {
@@ -197,20 +195,14 @@ String getResponseFromAPI(String endPoint) {
     WiFiClient client;
     HTTPClient http;
 
-    // http.setReuse(true);
     http.addHeader("Content-Type", "application/json");
     http.addHeader("Accept", "*/*");
     http.addHeader("Accept-Encoding", "gzip, deflate, br");
-    http.begin(client, endPoint);  //"http://api.openweathermap.org/data/2.5/weather?id=6066513&&units=metric&appid=?");
+    http.begin(client, endPoint); 
     int httpCode = http.GET();
-
-   // Serial.println("httpCode:");
-   // Serial.print(httpCode);
 
     if (httpCode > 0)
     {
-      //Serial.println("start to serialize");
-
       String response = http.getString();
 
       return response;
@@ -226,22 +218,22 @@ String getResponseFromAPI(String endPoint) {
 }
 
 
-void handleRoot() {                          // When URI / is requested, send a web page with a button to toggle the LED
+void handleRoot() {                      
   server.send(200, "text/html", "<form action=\"/login\" method=\"POST\"><input type=\"text\" name=\"username\" placeholder=\"Username\"></br><input type=\"password\" name=\"password\" placeholder=\"Password\"></br><input type=\"submit\" value=\"Login\"></form><p>Try 'John Doe' and 'password123' ...</p>");
 }
 
-void handleLogin() {                         // If a POST request is made to URI /login
+void handleLogin() {                        
   if ( ! server.hasArg("username") || ! server.hasArg("password")
-       || server.arg("username") == NULL || server.arg("password") == NULL) { // If the POST request doesn't have username and password data
-    server.send(400, "text/plain", "400: Invalid Request");         // The request is invalid, so send HTTP status 400
+       || server.arg("username") == NULL || server.arg("password") == NULL) {
+    server.send(400, "text/plain", "400: Invalid Request");         
     return;
   }
-  if (server.arg("username") == "John Doe" && server.arg("password") == "password123") { // If both the username and the password are correct
-    //server.send(200, "text/html", "<h1>Welcome, " + server.arg("username") + "!</h1><p>Login successful</p>");
+  if (server.arg("username") == "John Doe" && server.arg("password") == "password123") { 
+    
     server.send(200, "text/html", "<h1>Welcome, " + server.arg("username") + "!</h1><p>Login successful</p> <br></br> <form action=\"/list\" method=\"GET\"></br><input type=\"submit\" value=\"List Data\"></form>");
   }
   else
-  { // Username and password don't match
+  { 
     server.send(401, "text/plain", "401: Unauthorized");
   }
 }
@@ -249,8 +241,8 @@ void handleLogin() {                         // If a POST request is made to URI
 
 void handleWebData() {
 
-  String openWeatherAPI = "http://api.openweathermap.org/data/2.5/weather?id=6066513&&units=metric&appid=c8de7f5ac681549b72372579b0c8efcc";
-  String responseData = getResponseFromAPI(openWeatherAPI);  //Get weather data from Web
+  String openWeatherAPI = "http://api.openweathermap.org/data/2.5/weather?id=city&&units=metric&appid=?";
+  String responseData = getResponseFromAPI(openWeatherAPI); 
 
   DynamicJsonDocument root(2048);
 
@@ -268,9 +260,6 @@ void handleWebData() {
     cmaxTemp = tempInfo["temp_max"];
     cpressure = tempInfo["pressure"];
     chumidity = tempInfo["humidity"];
-    // getRoomData();
-    //float roomTemp =getRoomTemperature();
-    //int roomHumid = getRoomHumidity();
     setOptimumHumidity(ctemp);
 
     //Gather Forecast & Weather info
@@ -281,8 +270,8 @@ void handleWebData() {
 
     JsonObject windInfo=root["wind"];
     
-    wind_speed = windInfo["speed"]; // 1.79
-    wind_deg = windInfo["deg"]; // 253
+    wind_speed = windInfo["speed"]; 
+    wind_deg = windInfo["deg"]; 
     wind_gust = windInfo["gust"];
 
     String displayForecast=setWeatherForecast(cfeels,cminTemp,cmaxTemp,cpressure,chumidity,howIsTheSky,wind_speed,wind_deg,wind_gust);
@@ -299,24 +288,22 @@ weatherForecast+=        "<table id=\"forecast\" style=\"width:50%\">";
 weatherForecast+=         " <tr> ";
 weatherForecast+=           " <h3>Forecast</h3> ";
 weatherForecast+=          "</tr>";
-//weatherForecast+= "<td colspan=\"3\"style=\"text-align: center;\"><p>";
-//weatherForecast+= "Here is the weather forecast for the day</p></td>"; 
 weatherForecast+=            "<tr><td class=\"forecastTable\">";
 weatherForecast+=             " Feels like : <span>";
 weatherForecast+= fc_feelsLike;
-weatherForecast+="C </span></td>";
+weatherForecast+=" &#8451; </span></td>";
 weatherForecast+="            <td class=\"forecastTable\">";
 weatherForecast+="              Min Temp : <span>";
 weatherForecast+=fc_minTemp;
-weatherForecast+="C </span>";
+weatherForecast+="&#8451; </span>";
 weatherForecast+="            </td>";
 weatherForecast+="            <td class=\"forecastTable\">";
 weatherForecast+="              Max Temp :<span>";
 weatherForecast+= fc_maxTemp;
-weatherForecast+= "C</span>";
+weatherForecast+= "&#8451;</span>";
 weatherForecast+= "           </td></tr>";
 weatherForecast+= "        <tr>   <td class=\"forecastTable\">";
-weatherForecast+="              Pressure: <span>";
+weatherForecast+="              Pressure : <span>";
 weatherForecast+=fc_pressure;
 weatherForecast+="bar  </span></td>";
 weatherForecast+="          <td colspan=\"3\" style=\"text-align: left;\">How is Sky :";
@@ -328,9 +315,6 @@ weatherForecast+= fc_windDeg;
 weatherForecast+=" </td> <td class=\"forecastTable\"> Wind Gust : ";
 weatherForecast+=fc_windGust;
 weatherForecast+="</tr></td> </table>";
-
-//  Serial.println(" Weather info: ");
-//  Serial.print(weatherForecast);
 
   return weatherForecast;
 }
@@ -352,9 +336,9 @@ String handleTimeData() {
   }
   else {
 
-    String currentDateTime = timeRoot["currentDateTime"]; // "2020-05-05T23:09-04:00"
+    String currentDateTime = timeRoot["currentDateTime"]; 
 
-    String dayOfTheWeek = timeRoot["dayOfTheWeek"]; // "Tuesday"
+    String dayOfTheWeek = timeRoot["dayOfTheWeek"];
 
     return  currentDateTime;
   }
@@ -432,12 +416,12 @@ String SendHTML(float Temperaturestat, int Humiditystat, String foreCast) {
   ptr += "          <td>\n";
   ptr += "             <div class=\"side-by-side temperature\">";
   ptr += Temperaturestat;
-  ptr += "<span class=\"superscript\"> °C </span></div>\n";
+  ptr += "<span class=\"superscript\"> &#8451; </span></div>\n";
   ptr += "           </td>\n";
   ptr += "           <td>\n";
   ptr += "               <div id=\"deg_room\"  class=\"side-by-side temperature\">" ;
   ptr += getRoomTemperature() ;
-  ptr += "<span class=\"superscript\"> °C </span></div>\n";
+  ptr += "<span class=\"superscript\"> &#8451;</span></div>\n";
   ptr += "           </td>\n";
   ptr += "        </tr>\n";
   ptr += "      <tr>\n";
