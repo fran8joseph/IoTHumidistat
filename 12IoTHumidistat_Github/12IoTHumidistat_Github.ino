@@ -117,8 +117,7 @@ void loop() {
     onStartup=false;
   }
   loopCounter+=1;
- 
-  //Serial.println(loopCounter);
+
  delay(50);
 }
 
@@ -135,7 +134,7 @@ void controlServoAngle(int optVal){
   }
   else if(currentHumid >= (requiredHumid+2)){
   
-        servo.write(130);
+        servo.write(180);
         delay(50);
         
   }
@@ -153,7 +152,6 @@ int getRoomHumidity() {
 
     
 void setOptimumHumidity(float _outT){
-  //float _roomT=getRoomTemperature();
   int _roomH =getRoomHumidity();
   int optRoomHumidity;
 
