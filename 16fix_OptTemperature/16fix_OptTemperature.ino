@@ -21,7 +21,8 @@
 ESP8266WiFiMulti WiFiMulti;
 ESP8266WebServer server(80);
 dht DHT;
-Servo servo; 
+Servo servo;
+
 
 float ctemp;
 float cfeels;
@@ -35,9 +36,13 @@ float wind_speed; // 1.79
 int wind_deg; // 253
 float wind_gust;
 
- int loopCounter=0;
- bool onStartup = false;
-  
+int loopCounter = 0;
+bool onStartup = false;
+
+int servo_angle = 0;
+volatile int optHumidValue=0;
+volatile int startStopServo =0;
+
 void handleRoot();              // function prototypes for HTTP handlers
 void handleLogin();
 void handleWebData();
@@ -45,32 +50,27 @@ String handleTimeData();
 String getWeatherInfoAPI();
 String getDateAndTimeAPI();
 void handleNotFound();
-float getRoomTemperature();
+int getRoomTemperature();
 int getRoomHumidity();
 String SendHTML(float, int, String);
 float getOutsideTemperature();
 int getOutsideHumid();
 void setOptimumHumidity(float);
-String setWeatherForecast(float,float,float,int,int,const char*,float,int,float);
+String setWeatherForecast(float, float, float, int, int, const char*, float, int, float);
 void controlServoAngle(int);
 
 
 void setup()
 {
   Serial.begin(9600);
-  servo.attach(0);
- // Serial.println(" In set up : reset servo");
- servo.write(130);
- delay(1000);
+  delay(1000);
 
- onStartup = true;
- 
-  int chk = DHT.read11(D1);
+  onStartup = true;
 
   WiFi.mode(WIFI_STA);
 
-  WiFiMulti.addAP("SSID", "pwd");
-  WiFi.begin("SSID", "pwd");
+  WiFiMulti.addAP("SSID", "password");
+  WiFi.begin("SSID", "password");
   Serial.print("Connecting");
 
   while (WiFi.status() != WL_CONNECTED)
@@ -85,9 +85,10 @@ void setup()
 
   delay(2000);
 
-  if (MDNS.begin("esp8266")) {  
-    
-    MDNS.addService("http","tcp",80);
+  if (MDNS.begin("esp8266")) {              // Start the mDNS responder for esp8266.local
+
+    MDNS.addService("http", "tcp", 80);
+
     Serial.println("mDNS responder started");
   } else {
     Serial.println("Error setting up MDNS responder!");
@@ -98,7 +99,7 @@ void setup()
   server.on("/list", HTTP_GET, handleWebData);
   server.onNotFound(handleNotFound);
 
-  server.begin(); 
+  server.begin(); // Actually start the server
   Serial.println("HTTP server started");
 
   delay(3000);
@@ -109,81 +110,114 @@ void loop() {
 
   server.handleClient();
 
-  if(loopCounter == 6500 || onStartup==true){
-    
+  if (loopCounter == 6500 || onStartup == true) {
     handleWebData();
-
-    loopCounter=0;
-    onStartup=false;
+    loopCounter = 0;
+    onStartup = false;
   }
-  loopCounter+=1;
-
- delay(50);
+  loopCounter += 1;
+   
+  delay(50);
 }
 
-void controlServoAngle(int optVal){
-  servo.attach(D4);
-  delay(150);
+void controlServoAngle(int optVal) {
+
+  bool servo_attach_status = false;
+
+  servo_angle = servo.read();
+
+  if (servo_angle>100){
+    servo.attach(D2);
+    delay(150);
+    servo_attach_status = true;
+  }
 
   int requiredHumid = optVal;
   int currentHumid = getRoomHumidity();
-  
-  if(currentHumid <= (requiredHumid+2)){
-        servo.write(10);
-        delay(50);
+
+  if (currentHumid < (requiredHumid + 2)) {
+    servo.write(0);
+    delay(50);
   }
-  else if(currentHumid >= (requiredHumid+2)){
-  
-        servo.write(180);
-        delay(50);
-        
+  else if (currentHumid >= (requiredHumid + 2)) {
+    servo.write(135);
+    delay(50);
+  }
+
+  if(servo_attach_status){
+    servo.detach();
   }
 }
 
 int getRoomTemperature() {
+  delay(2500);
+  int chkTemp = DHT.read11(D1);
   int temperature = DHT.temperature;
   return temperature;
 }
 
 int getRoomHumidity() {
+  delay(2500);
+   int chkHmd = DHT.read11(D1);
   int humidity = DHT.humidity;
   return humidity;
 }
 
-    
-void setOptimumHumidity(float _outT){
-  int _roomH =getRoomHumidity();
+void setOptHum(int optValue){
+  optHumidValue = optValue;
+}
+
+int getOptHumidity(){
+  return optHumidValue;
+}
+
+
+void setOptimumHumidity(float _outT) {
+  //float _roomT=getRoomTemperature();
+  int _roomH = getRoomHumidity();
   int optRoomHumidity;
 
-  if(_outT < -28){
+  if (_outT < -28) {
     optRoomHumidity = 15;
   }
-  else if(( _outT > -28) && (_outT < -23)){
+  else if (( _outT > -30) && (_outT <= -25)) {
     optRoomHumidity = 20;
   }
-  else if(( _outT > -23) && (_outT < -18)){
+   else if (( _outT > -25) && (_outT <= -23)) {
+    optRoomHumidity = 22;
+  }
+  else if (( _outT > -23) && (_outT <= -18)) {
     optRoomHumidity = 25;
   }
-  else if(( _outT > -18) && (_outT < -12)){
+  else if (( _outT > -18) && (_outT <= -12)) {
     optRoomHumidity = 30;
   }
-  else if(( _outT > -12) && (_outT < -7)){
+  else if (( _outT > -12) && (_outT <= -7)) {
     optRoomHumidity = 35;
   }
-  else if(( _outT > -7) && (_outT < 10)){
+  else if (( _outT > -7) && (_outT <= 1)) {
     optRoomHumidity = 40;
+  } 
+  else if (( _outT > 1) && (_outT <= 10)) {
+    optRoomHumidity = 42;
   }
-  else if(( _outT > 10) && (_outT < -23)){
+  else if (( _outT > 10) && (_outT <= 28)) {
     optRoomHumidity = 45;
   }
-  Serial.print("Temp out:");
-  Serial.println(_outT);
+  else if ( _outT > 28)  {
+    optRoomHumidity = 47;
+  }
   
-   Serial.print("Optimum Humidity:");
-   Serial.println(optRoomHumidity);
+/*  Serial.print("Temp out:");
+  Serial.println(_outT);
 
-   controlServoAngle(optRoomHumidity);
+  Serial.print("Optimum Humidity:");
+  Serial.println(optRoomHumidity);
+*/
+  setOptHum(optRoomHumidity);
+  controlServoAngle(optRoomHumidity);
 
+  //return optRoomHumidity;
 }
 
 String getResponseFromAPI(String endPoint) {
@@ -193,10 +227,11 @@ String getResponseFromAPI(String endPoint) {
     WiFiClient client;
     HTTPClient http;
 
+    // http.setReuse(true);
     http.addHeader("Content-Type", "application/json");
     http.addHeader("Accept", "*/*");
     http.addHeader("Accept-Encoding", "gzip, deflate, br");
-    http.begin(client, endPoint); 
+    http.begin(client, endPoint);
     int httpCode = http.GET();
 
     if (httpCode > 0)
@@ -216,22 +251,22 @@ String getResponseFromAPI(String endPoint) {
 }
 
 
-void handleRoot() {                      
-  server.send(200, "text/html", "<form action=\"/login\" method=\"POST\"><input type=\"text\" name=\"username\" placeholder=\"Username\"></br><input type=\"password\" name=\"password\" placeholder=\"Password\"></br><input type=\"submit\" value=\"Login\"></form><p>Try 'John Doe' and 'password123' ...</p>");
+void handleRoot() {
+  server.send(200, "text/html", "<form action=\"/login\" method=\"POST\"><input type=\"text\" name=\"username\" placeholder=\"Username\"></br><input type=\"password\" name=\"password\" placeholder=\"Password\"></br><input type=\"submit\" value=\"Login\"></form>");
 }
 
-void handleLogin() {                        
+void handleLogin() {                         // If a POST request is made to URI /login
   if ( ! server.hasArg("username") || ! server.hasArg("password")
-       || server.arg("username") == NULL || server.arg("password") == NULL) {
-    server.send(400, "text/plain", "400: Invalid Request");         
+       || server.arg("username") == NULL || server.arg("password") == NULL) { // If the POST request doesn't have username and password data
+    server.send(400, "text/plain", "400: Invalid Request");         // The request is invalid, so send HTTP status 400
     return;
   }
-  if (server.arg("username") == "John Doe" && server.arg("password") == "password123") { 
-    
+  if (server.arg("username") == "90Base" && server.arg("password") == "pass4rd") { // If both the username and the password are correct
+    //server.send(200, "text/html", "<h1>Welcome, " + server.arg("username") + "!</h1><p>Login successful</p>");
     server.send(200, "text/html", "<h1>Welcome, " + server.arg("username") + "!</h1><p>Login successful</p> <br></br> <form action=\"/list\" method=\"GET\"></br><input type=\"submit\" value=\"List Data\"></form>");
   }
   else
-  { 
+  { // Username and password don't match
     server.send(401, "text/plain", "401: Unauthorized");
   }
 }
@@ -239,8 +274,8 @@ void handleLogin() {
 
 void handleWebData() {
 
-  String openWeatherAPI = "http://api.openweathermap.org/data/2.5/weather?id=city&&units=metric&appid=?";
-  String responseData = getResponseFromAPI(openWeatherAPI); 
+  String openWeatherAPI = "http://api.openweathermap.org/data/2.5/weather?id=6066513&&units=metric&appid={appId}";
+  String responseData = getResponseFromAPI(openWeatherAPI);  //Get weather data from Web
 
   DynamicJsonDocument root(2048);
 
@@ -266,57 +301,57 @@ void handleWebData() {
 
     howIsTheSky = forecastInfo["description"];
 
-    JsonObject windInfo=root["wind"];
-    
-    wind_speed = windInfo["speed"]; 
-    wind_deg = windInfo["deg"]; 
+    JsonObject windInfo = root["wind"];
+
+    wind_speed = windInfo["speed"]; // 1.79
+    wind_deg = windInfo["deg"]; // 253
     wind_gust = windInfo["gust"];
 
-    String displayForecast=setWeatherForecast(cfeels,cminTemp,cmaxTemp,cpressure,chumidity,howIsTheSky,wind_speed,wind_deg,wind_gust);
-    
-    server.send(200, "text/html", SendHTML(ctemp, chumidity,displayForecast));
+    String displayForecast = setWeatherForecast(cfeels, cminTemp, cmaxTemp, cpressure, chumidity, howIsTheSky, wind_speed, wind_deg, wind_gust);
+
+    server.send(200, "text/html", SendHTML(ctemp, chumidity, displayForecast));
   }
-  
+
 }
-                          
-String  setWeatherForecast(float fc_feelsLike,float fc_minTemp,float fc_maxTemp,int fc_pressure,int fc_humidity, const char* fc_howIsTheSky,float fc_windSpeed, int fc_windDeg, float fc_windGust){
+
+String  setWeatherForecast(float fc_feelsLike, float fc_minTemp, float fc_maxTemp, int fc_pressure, int fc_humidity, const char* fc_howIsTheSky, float fc_windSpeed, int fc_windDeg, float fc_windGust) {
 
   String weatherForecast;
-weatherForecast+=        "<table id=\"forecast\" style=\"width:50%\">";
-weatherForecast+=         " <tr> ";
-weatherForecast+=           " <h3>Forecast</h3> ";
-weatherForecast+=          "</tr>";
-weatherForecast+=            "<tr><td class=\"forecastTable\">";
-weatherForecast+=             " Feels like : <span>";
-weatherForecast+= fc_feelsLike;
-weatherForecast+=" &#8451; </span></td>";
-weatherForecast+="            <td class=\"forecastTable\">";
-weatherForecast+="              Min Temp : <span>";
-weatherForecast+=fc_minTemp;
-weatherForecast+="&#8451; </span>";
-weatherForecast+="            </td>";
-weatherForecast+="            <td class=\"forecastTable\">";
-weatherForecast+="              Max Temp :<span>";
-weatherForecast+= fc_maxTemp;
-weatherForecast+= "&#8451;</span>";
-weatherForecast+= "           </td></tr>";
-weatherForecast+= "        <tr>   <td class=\"forecastTable\">";
-weatherForecast+="              Pressure : <span>";
-weatherForecast+=fc_pressure;
-weatherForecast+="bar  </span></td>";
-weatherForecast+="          <td colspan=\"3\" style=\"text-align: left;\">How is Sky :";
-weatherForecast+=fc_howIsTheSky;
-weatherForecast+="         </td> </tr> <tr><td class=\"forecastTable\"> Wind Speed : ";
-weatherForecast+=fc_windSpeed;
-weatherForecast+= " </td> <td class=\"forecastTable\">Wind Degree :";
-weatherForecast+= fc_windDeg;
-weatherForecast+=" </td> <td class=\"forecastTable\"> Wind Gust : ";
-weatherForecast+=fc_windGust;
-weatherForecast+="</tr></td> </table>";
+  weatherForecast +=        "<table id=\"forecast\" style=\"width:50%\">";
+  weatherForecast +=         " <tr> ";
+  weatherForecast +=           " <h3>Forecast</h3> ";
+  weatherForecast +=          "</tr>";
+  weatherForecast +=            "<tr><td class=\"forecastTable\">";
+  weatherForecast +=             " Feels like : <span>";
+  weatherForecast += fc_feelsLike;
+  weatherForecast += " &#8451; </span></td>";
+  weatherForecast += "            <td class=\"forecastTable\">";
+  weatherForecast += "              Min Temp : <span>";
+  weatherForecast += fc_minTemp;
+  weatherForecast += " &#8451; </span>";
+  weatherForecast += "            </td>";
+  weatherForecast += "            <td class=\"forecastTable\">";
+  weatherForecast += "              Max Temp :<span>";
+  weatherForecast += fc_maxTemp;
+  weatherForecast += "&#8451;</span>";
+  weatherForecast += "           </td></tr>";
+  weatherForecast += "        <tr>   <td class=\"forecastTable\">";
+  weatherForecast += "              Pressure: <span>";
+  weatherForecast += fc_pressure;
+  weatherForecast += " bar  </span></td>";
+  weatherForecast += "          <td class=\"forecastTable\" colspan=\"3\" style=\"text-align: left;\">How is Sky : ";
+  weatherForecast += fc_howIsTheSky;
+  weatherForecast += "         </td> </tr> <tr><td class=\"forecastTable\"> Wind Speed : ";
+  weatherForecast += fc_windSpeed;
+  weatherForecast += " </td> <td class=\"forecastTable\">Wind Degree : ";
+  weatherForecast += fc_windDeg;
+  weatherForecast += " </td> <td class=\"forecastTable\"> Wind Gust : ";
+  weatherForecast += fc_windGust;
+  weatherForecast += "</tr></td> </table>";
 
   return weatherForecast;
 }
-    
+
 
 String handleTimeData() {
 
@@ -334,9 +369,9 @@ String handleTimeData() {
   }
   else {
 
-    String currentDateTime = timeRoot["currentDateTime"]; 
+    String currentDateTime = timeRoot["currentDateTime"]; // "2020-05-05T23:09-04:00"
 
-    String dayOfTheWeek = timeRoot["dayOfTheWeek"];
+    String dayOfTheWeek = timeRoot["dayOfTheWeek"]; // "Tuesday"
 
     return  currentDateTime;
   }
@@ -344,28 +379,29 @@ String handleTimeData() {
 }
 
 String SendHTML(float Temperaturestat, int Humiditystat, String foreCast) {
-  
-  loopCounter=0;
 
-  Serial.print("from Page refresh");
-  
+  loopCounter = 0;
+
+//  Serial.print("from Page refresh");
+
   String ptr = "<!DOCTYPE html> <html>\n";
-  "<!DOCTYPE html> <html>\n";
   ptr += "<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">\n";
   ptr += "<link href=\"https://fonts.googleapis.com/css?family=Open+Sans:300,400,600\" rel=\"stylesheet\">\n";
-  ptr += "<title>Markham Weather Report</title>\n";
+  ptr += "<title style=text-align:center >Markham Weather Report</title>\n";
   ptr += "<style>html { font-family: 'Open Sans', sans-serif; display: block; margin: 0px auto; text-align: center;color: #333333;}\n";
   ptr += "body{margin-top: 50px;}\n";
-  ptr += "h1 {margin: 50px auto 30px;}\n";
-  ptr += "h4 {margin: 50px auto 30px;font-size: 15px;}\n";
-  ptr += "table{  border:1px dotted black;margin-left:auto;margin-right:auto;padding:2px; border-spacing:20px; }";
+  ptr += "h1 { text-align:center; margin: 50px auto 30px;}\n";
+  ptr += "h2 { text-align:center; margin: 50px auto 30px;}\n";
+  ptr += "h4 { text-align:center; margin: 50px auto 30px;font-size: 15px;}\n";
+  ptr += "table{  border:1px dotted black; margin-left:auto; margin-right:auto;padding:2px; border-spacing:20px; }";
   ptr += "tr,td {text-align:center;}";
   ptr += ".side-by-side{display: inline-block;vertical-align: middle;position: relative;}\n";
   ptr += ".humidity-icon{background-color: #3498db;width: 20px;height: 30px;border-radius: 50%;line-height: 36px;}\n";
-  ptr += ".humidity-text{font-weight: 600;padding-left:5px;font-size: 19px;width: 100px;text-align: left;}\n";
+  ptr += ".humidity-text{font-weight: 600;padding-left:5px;font-size: 19px;width: 75px;text-align: left;}\n";
+  ptr += ".forecastTable{font-weight: 400;padding-left:5px;font-size: 15px;width: 100px;text-align: left;}\n";
   ptr += ".humidity{font-weight: 300;font-size: 30px;color: #3498db;}\n";
   ptr += ".temperature-icon{background-color: #f39c12;width: 20px;height: 30px;border-radius: 50%;line-height: 40px;}\n";
-  ptr += ".temperature-text{font-weight: 600;padding-left:5px;font-size: 19px;width: 100px;text-align: left;}\n";
+  ptr += ".temperature-text{font-weight: 600;padding-left:5px;font-size: 19px;width: 75px;text-align: left;}\n";
   ptr += ".temperature{font-weight: 300;font-size: 30px;color: #f39c12; padding:5px}\n";
   ptr += ".superscript{font-size: 15px;font-weight: 600;position: absolute;top: 10px;}\n";
   ptr += ".data{padding: 10px;}\n";
@@ -394,6 +430,7 @@ String SendHTML(float Temperaturestat, int Humiditystat, String foreCast) {
   ptr += "           <th></th>\n";
   ptr += "           <th class=\"tableHeader\">Markham</th>\n";
   ptr += "          <th class=\"tableHeader\">Room</th>\n";
+  ptr += "          <th class=\"tableHeader\">OptVal</th>\n";
   ptr += "     </tr>\n";
   ptr += "      <tr>\n";
   ptr += "           <td>\n";
@@ -409,7 +446,7 @@ String SendHTML(float Temperaturestat, int Humiditystat, String foreCast) {
   ptr += "               </div>\n";
   ptr += "           </td>\n";
   ptr += "           <td>\n";
-  ptr += "               <div class=\"side-by-side temperature-text\">Temperature</div>\n";
+  ptr += "               <div class=\"side-by-side temperature-text\">Temp</div>\n";
   ptr += "           </td>\n";
   ptr += "          <td>\n";
   ptr += "             <div class=\"side-by-side temperature\">";
@@ -419,7 +456,7 @@ String SendHTML(float Temperaturestat, int Humiditystat, String foreCast) {
   ptr += "           <td>\n";
   ptr += "               <div id=\"deg_room\"  class=\"side-by-side temperature\">" ;
   ptr += getRoomTemperature() ;
-  ptr += "<span class=\"superscript\"> &#8451;</span></div>\n";
+  ptr += "<span class=\"superscript\"> &#8451; </span></div>\n";
   ptr += "           </td>\n";
   ptr += "        </tr>\n";
   ptr += "      <tr>\n";
@@ -432,7 +469,7 @@ String SendHTML(float Temperaturestat, int Humiditystat, String foreCast) {
   ptr += "               </div>\n";
   ptr += "           </td>\n";
   ptr += "           <td>\n";
-  ptr += "              <div class=\"side-by-side humidity-text\">Humidity</div>\n";
+  ptr += "              <div class=\"side-by-side humidity-text\">Hmdty</div>\n";
   ptr += "            </td>\n";
   ptr += "            <td>\n";
   ptr += "               <div class=\"side-by-side humidity\">\n";
@@ -444,10 +481,15 @@ String SendHTML(float Temperaturestat, int Humiditystat, String foreCast) {
   ptr += getRoomHumidity();
   ptr += "<span class=\"superscript\">%</span></div>\n";
   ptr += "           </td>\n";
+  ptr += "           <td>\n";
+  ptr += "               <div id=\"deg_room\" class=\"side-by-side humidity\">\n";
+  ptr += getOptHumidity();
+  ptr += "<span class=\"superscript\">%</span></div>\n";
+  ptr += "           </td>\n";
   ptr += "        </div>\n";
   ptr += "       </tr>\n";
   ptr += "   </table>\n";
-  ptr+=foreCast;
+  ptr += foreCast;
   //add forecast table here
   ptr += "<h4> Observed at:   ";
   ptr += handleTimeData();
@@ -458,8 +500,15 @@ String SendHTML(float Temperaturestat, int Humiditystat, String foreCast) {
   return ptr;
 }
 
-
 void handleNotFound()
 {
   server.send(404, "text/html", "404: Not found latest"); // Send HTTP status 404 (Not Found) when there's no handler for the URI in the request
 }
+
+
+//TODO
+//1.Correct opt humidity value check - Done
+//2. Display opt humidity value in page - Done
+//3. Attach servo only if its off - for every loop.  - Done
+//4. Get Start/Stop interrupt button  
+//5. Define a humidity value manually from page 
