@@ -69,8 +69,8 @@ void setup()
 
   WiFi.mode(WIFI_STA);
 
-  WiFiMulti.addAP("BELL189", "mrprabu19");
-  WiFi.begin("BELL189", "mrprabu19");
+  WiFiMulti.addAP("SSID", "password");
+  WiFi.begin("SSID", "password");
   Serial.print("Connecting");
 
   while (WiFi.status() != WL_CONNECTED)
@@ -274,7 +274,7 @@ void handleLogin() {                         // If a POST request is made to URI
 
 void handleWebData() {
 
-  String openWeatherAPI = "http://api.openweathermap.org/data/2.5/weather?id=6066513&&units=metric&appid=c8de7f5ac681549b72372579b0c8efcc";
+  String openWeatherAPI = "http://api.openweathermap.org/data/2.5/weather?id=6066513&&units=metric&appid={appId}";
   String responseData = getResponseFromAPI(openWeatherAPI);  //Get weather data from Web
 
   DynamicJsonDocument root(2048);
@@ -507,8 +507,8 @@ void handleNotFound()
 
 
 //TODO
-//1.Correct opt humidity value check
-//2. Display opt humidity value in page
-//3. Attach servo only if its off - for every loop. 
-//4. Get Start/Stop interrupt button
+//1.Correct opt humidity value check - Done
+//2. Display opt humidity value in page - Done
+//3. Attach servo only if its off - for every loop.  - Done
+//4. Get Start/Stop interrupt button  
 //5. Define a humidity value manually from page 
